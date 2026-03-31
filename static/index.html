@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BULK GLOBE</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
+  :root{--wb:#fff;--w:#e8e8e8;--g1:#bbb;--g2:#888;--g3:#555;--g4:#888;--g5:#1b1a13;--g6:#1b1a13;--g7:#1b1a13;--bk:#141310;--grn:#14b886;--acc:#00b481}
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:var(--bk);color:var(--w);font-family:'JetBrains Mono','Space Mono','Courier New',monospace;overflow:hidden}
+  body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(255,255,255,.008) 2px,rgba(255,255,255,.008) 4px);pointer-events:none;z-index:9999}
+  body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,.55) 100%);pointer-events:none;z-index:9998}
+
+  #header{position:fixed;top:0;left:0;right:0;z-index:100;background:linear-gradient(180deg,var(--bk) 0%,var(--bk) 70%,transparent 100%);padding:12px 20px 28px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none}
+  #header h1{font-family:'Space Mono',monospace;font-size:22px;font-weight:700;letter-spacing:8px;color:var(--wb);text-shadow:0 0 30px rgba(255,255,255,.12)}
+  #header .sub{font-size:9px;color:var(--g2);letter-spacing:3px;text-transform:uppercase;margin-top:2px}
+  #header-r{text-align:right;font-size:9px;color:var(--g3);letter-spacing:1px}
+  .dot{display:inline-block;width:6px;height:6px;background:var(--grn);border-radius:50%;margin-right:4px;vertical-align:middle;animation:pd 2s ease-in-out infinite}
+  @keyframes pd{0%,100%{opacity:1;box-shadow:0 0 6px var(--grn)}50%{opacity:.3}}
+
+  canvas{position:absolute;inset:0;cursor:grab;touch-action:none}
+  canvas:active{cursor:grabbing}
+
+  .pn{position:fixed;z-index:200;pointer-events:none;display:flex;flex-direction:column;gap:6px}
+  #pL{top:82px;left:14px;width:230px}
+  #pR{top:82px;right:14px;width:195px}
+  .bx{border:1px solid var(--g4);background:#141310;backdrop-filter:blur(4px)}
+  .bx .t{border-bottom:1px solid var(--g4);padding:3px 8px;font-size:7.5px;letter-spacing:2px;text-transform:uppercase;color:var(--g2);display:flex;justify-content:space-between}
+  .bx .b{padding:7px 9px}
+  .bn{font-size:20px;font-weight:700;letter-spacing:1px;color:var(--wb);text-shadow:0 0 10px rgba(255,255,255,.08);line-height:1.1}
+  .sl{display:flex;justify-content:space-between;font-size:8.5px;padding:1.5px 0}
+  .sl .la{color:var(--g3)}.sl .va{color:var(--g1)}.sl .br{color:var(--wb)}
+  .sep{border:none;border-top:1px solid var(--g5);margin:3px 0}
+  .lr{display:flex;align-items:center;gap:6px;font-size:8.5px;color:var(--g2);padding:1.5px 0}
+  .sw{width:10px;height:10px;border:1px solid;flex-shrink:0}
+  .sw.ex{background:var(--wb);border-color:var(--wb);box-shadow:0 0 3px rgba(255,255,255,.25)}
+  .sw.no{background:var(--g5);border-color:var(--g4)}
+  .sw.mk{background:var(--acc);border-color:var(--acc);box-shadow:0 0 3px var(--acc)}
+
+  #btm{position:fixed;bottom:0;left:0;right:0;z-index:200;background:linear-gradient(0deg,var(--bk) 0%,var(--bk) 45%,transparent 100%);padding:18px 20px 7px;display:flex;justify-content:space-between;font-size:7.5px;color:var(--g3);letter-spacing:1px;pointer-events:none}
+
+  #tt{display:none;position:fixed;z-index:400;background:#141310;border:1px solid var(--g4);padding:6px 10px;pointer-events:none;max-width:320px;font-size:9px}
+  #tt.on{display:block}
+  .tn{color:var(--wb);font-weight:600;font-size:10px}.td{color:var(--g2);font-size:8.5px;margin-top:2px}.tg{color:var(--grn);font-size:8.5px}
+  .tbar{margin-top:4px;height:3px;background:var(--g5);border-radius:1px;overflow:hidden}.tfill{height:100%;background:var(--g1)}
+
+  /* Modal shared */
+  .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:500;justify-content:center;align-items:center;cursor:pointer}
+  .modal-bg.open{display:flex}
+  .modal-box{width:500px;max-width:94vw;border:1px solid var(--g3);background:var(--g7);cursor:default;box-shadow:0 0 80px rgba(0,0,0,.5)}
+  .modal-top{border-bottom:1px solid var(--g4);padding:6px 12px;display:flex;justify-content:space-between;align-items:center;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--g2)}
+  .modal-x{background:none;border:none;color:var(--g2);font-family:inherit;font-size:12px;cursor:pointer}
+  .modal-x:hover{color:var(--wb)}
+  .modal-bd{padding:16px;font-size:10px;line-height:1.5}
+  .mld{color:var(--g3);text-align:center;padding:20px}
+  .mtb{width:100%;white-space:pre;font-size:10px;line-height:1.5;color:var(--w)}
+  .mtb .bc{color:var(--g4)}.mtb .lc{color:var(--g2)}.mtb .vc{color:var(--wb)}.mtb .hc{color:var(--grn)}
+  .rbw{margin-top:10px}.rb{height:5px;background:var(--g5);border:1px solid var(--g4);overflow:hidden}.rf{height:100%;background:var(--wb)}.rl{font-size:7.5px;color:var(--g2);margin-top:2px;text-align:right;letter-spacing:1px}
+
+  /* Trader list in country modal */
+  .traders-section{margin-top:12px;border:1px solid var(--g4)}
+  .traders-header{border-bottom:1px solid var(--g4);padding:4px 8px;font-size:7.5px;letter-spacing:2px;text-transform:uppercase;color:var(--g2);cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+  .traders-header:hover{color:var(--acc)}
+  .traders-header .arrow{transition:transform .2s}
+  .traders-header.open .arrow{transform:rotate(90deg)}
+  .traders-list{display:none;max-height:200px;overflow-y:auto}
+  .traders-list.open{display:block}
+  .trader-item{padding:5px 10px;font-size:9px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--g5)}
+  .trader-item:last-child{border-bottom:none}
+  .trader-item:hover{background:var(--g6)}
+  .trader-item .t-name{color:var(--acc);font-weight:600}
+  .trader-item .t-wallet{color:var(--g3);font-size:7.5px}
+
+  /* Bottom button bar — centered */
+  #btn-bar{
+    position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:300;
+    display:flex;gap:8px;pointer-events:all;
+  }
+  #btn-bar button{
+    background:none;border:1px solid var(--g4);color:var(--g2);
+    font-family:inherit;font-size:9px;letter-spacing:2px;text-transform:uppercase;
+    padding:8px 20px;cursor:pointer;transition:all .2s;white-space:nowrap;
+  }
+  #btn-bar button:hover{border-color:var(--acc);color:var(--acc)}
+  #btn-bar button.active{border-color:var(--acc);color:var(--bk);background:var(--acc)}
+  #btn-bar button.active:hover{background:#14b886}
+  #btn-bar button.hidden-mode{border-color:var(--g3);color:var(--g3);text-decoration:line-through}
+  #btn-bar button.hidden-mode:hover{border-color:var(--wb);color:var(--wb)}
+
+  /* Placement mode banner */
+  #place-banner{
+    display:none;position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:300;
+    background:#141310;border:1px solid var(--acc);color:var(--acc);
+    font-size:9px;letter-spacing:1px;padding:6px 16px;pointer-events:none;
+  }
+  #place-banner.on{display:block}
+
+  /* Form modal */
+  .form-row{margin-bottom:10px}
+  .form-row label{display:block;font-size:8px;color:var(--g2);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px}
+  .form-row input{width:100%;background:var(--g6);border:1px solid var(--g4);color:var(--wb);font-family:inherit;font-size:10px;padding:6px 8px;outline:none}
+  .form-row input:focus{border-color:var(--acc)}
+  .form-row .hint{font-size:7px;color:var(--g3);margin-top:2px}
+  .form-submit{background:var(--acc);border:none;color:var(--bk);font-family:inherit;font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:8px 20px;cursor:pointer;width:100%;font-weight:700}
+  .form-submit:hover{background:#02d69a}
+  .form-submit:disabled{opacity:.4;cursor:not-allowed}
+  .form-err{color:#ff6060;font-size:8px;margin-top:6px;min-height:12px}
+
+  /* Follow wallet button */
+  .follow-btn{display:block;width:100%;margin-top:10px;background:var(--acc);border:none;color:var(--bk);font-family:inherit;font-size:9px;letter-spacing:1px;padding:7px 16px;cursor:pointer;font-weight:700;text-decoration:none;text-transform:uppercase;text-align:center;box-sizing:border-box}
+  .follow-btn:hover{background:#02d69a}
+  .delete-btn{display:block;margin-top:8px;background:none;border:1px solid #ff6060;color:#ff6060;font-family:inherit;font-size:8px;letter-spacing:1px;padding:6px 16px;cursor:pointer;text-transform:uppercase;text-align:center;width:100%;transition:all .2s}
+  .delete-btn:hover{background:#ff6060;color:var(--bk)}
+
+  /* Marker tooltip accent */
+  .tm{color:var(--acc);font-size:8.5px}
+
+  #ld{position:fixed;inset:0;background:var(--bk);z-index:10000;display:flex;flex-direction:column;justify-content:center;align-items:center;transition:opacity .7s}
+  #ld.done{opacity:0;pointer-events:none}
+  #ldt{font-size:10px;color:var(--g2);letter-spacing:1px;text-align:center;line-height:2}
+  #ldbw{margin-top:14px;width:280px;height:2px;background:var(--g5)}
+  #ldb{height:100%;width:0%;background:var(--w);transition:width .3s}
+  #dbg{position:fixed;bottom:30px;left:14px;z-index:300;font-size:8px;color:var(--g3);pointer-events:none;max-width:300px;line-height:1.5}
+  @media(max-width:720px){#pL{width:155px}#pR{display:none}.bn{font-size:15px}#header h1{font-size:15px;letter-spacing:4px}#btn-bar button{font-size:8px;padding:6px 12px}}
+</style>
+</head>
+<body>
+
+<div id="ld"><div id="ldt">BULK GLOBE<br><span id="lds">Initializing</span></div><div id="ldbw"><div id="ldb"></div></div></div>
+
+<div id="header">
+  <div><h1>BULK GLOBE</h1><div class="sub">Paper Mainnet · Population Comparator</div></div>
+  <div id="header-r"><div><span class="dot"></span>LIVE</div><div id="clk" style="margin-top:2px">--:--:--</div></div>
+</div>
+
+<canvas id="cv"></canvas>
+
+<div class="pn" id="pL">
+  <div class="bx"><div class="t"><span>Unique Traders</span><span id="badge">—</span></div>
+    <div class="b">
+      <div class="bn" id="uc">—</div>
+      <div style="font-size:7px;color:var(--g3);margin-top:2px" id="uc-src">ever traded on BULK</div>
+      <hr class="sep">
+      <div class="sl"><span class="la">Trades observed</span><span class="va" id="trades-n">0</span></div>
+      <div class="sl"><span class="la">This session</span><span class="va" id="trades-s">0</span></div>
+      <div class="sl"><span class="la">WS</span><span class="va" id="ws-st">—</span></div>
+      <div class="sl"><span class="la">API</span><span class="va" id="http-st">—</span></div>
+    </div>
+  </div>
+  <div class="bx"><div class="t"><span>Comparison</span></div>
+    <div class="b">
+      <div class="sl"><span class="la">Exceeded</span><span class="va br" id="exc">0</span></div>
+      <div class="sl"><span class="la">Not exceeded</span><span class="va" id="nexc">0</span></div>
+      <div class="sl"><span class="la">Total</span><span class="va" id="tot">0</span></div>
+    </div>
+  </div>
+  <div class="bx"><div class="t"><span>Exchange</span></div>
+    <div class="b">
+      <div class="sl"><span class="la">BTC Price</span><span class="va br" id="btc-px">—</span></div>
+      <div class="sl"><span class="la">24h Volume</span><span class="va br" id="vol">—</span></div>
+      <div class="sl"><span class="la">Open Interest</span><span class="va" id="oi">—</span></div>
+      <div class="sl"><span class="la">BTC Funding</span><span class="va" id="btc-fr">—</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="pn" id="pR">
+  <div class="bx"><div class="t"><span>Legend</span></div>
+    <div class="b">
+      <div class="lr"><div class="sw ex"></div><span>BULK &gt; population</span></div>
+      <div class="lr"><div class="sw no"></div><span>BULK &le; population</span></div>
+      <div class="lr"><div class="sw mk"></div><span>Trader location</span></div>
+      <hr class="sep">
+      <div style="font-size:7.5px;color:var(--g3);line-height:1.7;margin-top:3px">Drag — rotate<br>Scroll — zoom<br>Click — country detail</div>
+    </div>
+  </div>
+</div>
+
+<div id="btn-bar">
+  <button id="add-loc-btn" onclick="togglePlaceMode()">+ Add Location</button>
+  <button id="hide-traders-btn" onclick="toggleMarkers()">Hide Traders</button>
+</div>
+<div id="place-banner">Click on the globe to place your marker</div>
+
+<div id="btm"><div id="crd">—</div><div>BULK EXCHANGE · bulk.trade</div><div id="ri">—</div></div>
+<div id="tt"></div>
+<div id="dbg"></div>
+
+<!-- Country detail modal -->
+<div class="modal-bg" id="mbg" onclick="if(event.target===this)closeM()">
+  <div class="modal-box"><div class="modal-top"><span>Country Detail</span><button class="modal-x" onclick="closeM()">[X]</button></div><div class="modal-bd" id="mb"></div></div>
+</div>
+
+<!-- Add marker form modal -->
+<div class="modal-bg" id="form-bg" onclick="if(event.target===this)closeForm()">
+  <div class="modal-box" style="width:380px">
+    <div class="modal-top"><span>Add Your Location</span><button class="modal-x" onclick="closeForm()">[X]</button></div>
+    <div class="modal-bd" id="form-bd">
+      <div class="form-row"><label>Username</label><input id="f-name" type="text" maxlength="50" placeholder="Your display name"></div>
+      <div class="form-row"><label>Wallet Address</label><input id="f-wallet" type="text" maxlength="100" placeholder="Your BULK wallet (base58 pubkey)"><div class="hint">This will be publicly visible on the globe</div></div>
+      <div class="form-row" style="margin-top:4px">
+        <div class="sl"><span class="la">Latitude</span><span class="va" id="f-lat">—</span></div>
+        <div class="sl"><span class="la">Longitude</span><span class="va" id="f-lon">—</span></div>
+      </div>
+      <button class="form-submit" id="f-submit" onclick="submitMarker()">Place Marker</button>
+      <div class="form-err" id="f-err"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Marker detail modal -->
+<div class="modal-bg" id="marker-bg" onclick="if(event.target===this)closeMarker()">
+  <div class="modal-box" style="width:400px">
+    <div class="modal-top"><span>Trader Profile</span><button class="modal-x" onclick="closeMarker()">[X]</button></div>
+    <div class="modal-bd" id="marker-bd"></div>
+  </div>
+</div>
+
+<script src="/static/lib/d3.min.js"></script>
+<script src="/static/lib/topojson-client.min.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════════════ */
+let geoData=null, borderMesh=null, countryMap={}, bulkData={};
+let projection, pathGen, ctx;
+let W, H, R;
+let rot=[0,-20,0], vel=[0.12,0,0];
+let dragging=false, dragS=null, dragR=null;
+let sc=1, scT=1, hovISO=null;
+
+// Markers
+let markers = [];
+let markersVisible = true;
+let placeMode = false;
+let placeLat = null, placeLon = null;
+let hovMarker = null;
+let frameCount = 0;
+
+const $=id=>document.getElementById(id);
+const fmt=n=>(n||0).toLocaleString('en-US');
+function fmtC(n){if(n>=1e9)return(n/1e9).toFixed(2)+'B';if(n>=1e6)return(n/1e6).toFixed(2)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return''+n}
+function dbg(m){console.log('[BULK]',m);$('dbg').textContent=m}
+
+function toggleMarkers(){
+  markersVisible=!markersVisible;
+  const btn=$('hide-traders-btn');
+  if(markersVisible){btn.textContent='Hide Traders';btn.classList.remove('hidden-mode')}
+  else{btn.textContent='Show Traders';btn.classList.add('hidden-mode')}
+}
+
+/* ═══════════════════════════════════════════════════
+   INIT
+   ═══════════════════════════════════════════════════ */
+async function init(){
+  const bar=$('ldb'),st=$('lds');
+  if(typeof d3==='undefined'){st.textContent='ERROR: d3.js failed';return}
+  if(typeof topojson==='undefined'){st.textContent='ERROR: topojson failed';return}
+  bar.style.width='10%'; initCanvas();
+  st.textContent='Loading world map...'; bar.style.width='20%';
+  try{
+    const r=await fetch('/api/topology?res=50m');const topo=await r.json();
+    geoData=topojson.feature(topo,topo.objects.countries);
+    borderMesh=topojson.mesh(topo,topo.objects.countries,(a,b)=>a!==b);
+    st.textContent=geoData.features.length+' countries';
+  }catch(e){st.textContent='Map error: '+e.message}
+  bar.style.width='45%';
+  st.textContent='Loading population...';
+  try{const r=await fetch('/api/countries');countryMap=await r.json()}catch(e){}
+  bar.style.width='60%';
+  st.textContent='Loading markers...';
+  await loadMarkers();
+  bar.style.width='70%';
+  st.textContent='Connecting to BULK...';
+  await fetchBulk(); bar.style.width='90%';
+  setupEvents(); bar.style.width='100%'; st.textContent='Ready';
+  setTimeout(()=>$('ld').classList.add('done'),400);
+  requestAnimationFrame(animate);
+  setInterval(fetchBulk,10000);
+  setInterval(loadMarkers,30000);
+  setInterval(()=>{$('clk').textContent=new Date().toLocaleTimeString('en-US',{hour12:false})},1000);
+  setTimeout(()=>{$('dbg').textContent=''},5000);
+}
+
+/* ═══════════════════════════════════════════════════
+   MARKERS
+   ═══════════════════════════════════════════════════ */
+async function loadMarkers(){
+  try{const r=await fetch('/api/markers');markers=await r.json()}catch(e){markers=[]}
+}
+
+function togglePlaceMode(){
+  placeMode=!placeMode;
+  const btn=$('add-loc-btn');
+  const banner=$('place-banner');
+  if(placeMode){
+    btn.classList.add('active');btn.textContent='Cancel';
+    banner.classList.add('on');
+    $('cv').style.cursor='crosshair';
+  }else{
+    btn.classList.remove('active');btn.textContent='+ Add Location';
+    banner.classList.remove('on');
+    $('cv').style.cursor='grab';
+    placeLat=null;placeLon=null;
+  }
+}
+
+function openForm(lat,lon){
+  placeLat=lat; placeLon=lon;
+  $('f-lat').textContent=lat.toFixed(2)+'°';
+  $('f-lon').textContent=lon.toFixed(2)+'°';
+  $('f-name').value='';$('f-wallet').value='';$('f-err').textContent='';
+  $('form-bg').classList.add('open');
+}
+function closeForm(){$('form-bg').classList.remove('open')}
+
+async function submitMarker(){
+  const name=$('f-name').value.trim();
+  const wallet=$('f-wallet').value.trim();
+  const err=$('f-err');
+  if(!name){err.textContent='Username is required';return}
+  if(!wallet){err.textContent='Wallet address is required';return}
+  $('f-submit').disabled=true; err.textContent='';
+  try{
+    const r=await fetch('/api/markers',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({lat:placeLat,lon:placeLon,wallet,username:name})});
+    const d=await r.json();
+    if(!r.ok){err.textContent=d.error||'Error';$('f-submit').disabled=false;return}
+    // Save secret token locally so only this browser can delete it
+    if(d.secret){
+      try{localStorage.setItem('mk_'+d.id,d.secret)}catch(e){}
+    }
+    delete d.secret; // don't keep in memory
+    markers.push(d);
+    closeForm(); togglePlaceMode();
+  }catch(e){err.textContent='Network error';$('f-submit').disabled=false}
+}
+
+function showMarkerDetail(m){
+  const bd=$('marker-bd');
+  const ago=Math.floor((Date.now()/1000-m.created)/3600);
+  const agoStr=ago<1?'just now':ago<24?ago+'h ago':Math.floor(ago/24)+'d ago';
+
+  // Check if current user owns this marker
+  let ownerSecret=null;
+  try{ownerSecret=localStorage.getItem('mk_'+m.id)}catch(e){}
+  const isOwner=!!ownerSecret;
+
+  bd.innerHTML=`
+<div style="text-align:center;margin-bottom:12px">
+  <div style="font-size:16px;font-weight:700;color:var(--wb);letter-spacing:1px">${m.username}</div>
+  <div style="font-size:8px;color:var(--g3);margin-top:4px">Placed ${agoStr} · ${m.lat.toFixed(1)}°, ${m.lon.toFixed(1)}°</div>
+</div>
+<div style="background:var(--g6);border:1px solid var(--g4);padding:8px;margin-bottom:10px">
+  <div style="font-size:7.5px;color:var(--g3);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Wallet Address</div>
+  <div style="font-size:10px;color:var(--acc);word-break:break-all">${m.wallet}</div>
+</div>
+<div id="mk-stats" style="border:1px solid var(--g4);margin-bottom:12px">
+  <div style="border-bottom:1px solid var(--g4);padding:3px 8px;font-size:7.5px;letter-spacing:2px;text-transform:uppercase;color:var(--g2)">Trading Stats</div>
+  <div style="padding:8px;font-size:9px;color:var(--g3);text-align:center">Loading from BULK API...</div>
+</div>
+<a href="https://bulkstats.com/" target="_blank" rel="noopener" class="follow-btn">
+  Follow This Wallet →
+</a>
+${isOwner?`<button class="delete-btn" id="mk-del" onclick="deleteMyMarker('${m.id}')">Delete My Marker</button>`:''}
+<div style="font-size:7px;color:var(--g3);text-align:center;margin-top:6px">${isOwner?'This is your marker':'Opens bulkstats.com in a new tab'}</div>`;
+  $('marker-bg').classList.add('open');
+
+  // Fetch real stats
+  fetch('/api/wallet-stats/'+m.wallet)
+    .then(r=>r.json())
+    .then(s=>{
+      const box=$('mk-stats');
+      if(!box)return;
+      const pnlColor=s.totalPnl>=0?'var(--grn)':'#ff6060';
+      const pnlSign=s.totalPnl>=0?'+':'';
+      box.innerHTML=`
+<div style="border-bottom:1px solid var(--g4);padding:3px 8px;font-size:7.5px;letter-spacing:2px;text-transform:uppercase;color:var(--g2)">Trading Stats</div>
+<div style="padding:8px 10px">
+  <div style="display:flex;justify-content:space-between;font-size:9px;padding:3px 0">
+    <span style="color:var(--g3)">Total Trades</span>
+    <span style="color:var(--wb);font-weight:600">${fmt(s.totalTrades)}</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:9px;padding:3px 0">
+    <span style="color:var(--g3)">Total Volume</span>
+    <span style="color:var(--wb);font-weight:600">$${fmtC(s.totalVolume)}</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:9px;padding:3px 0">
+    <span style="color:var(--g3)">Total PnL</span>
+    <span style="color:${pnlColor};font-weight:600">${pnlSign}$${fmtC(Math.abs(s.totalPnl))}</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:9px;padding:3px 0">
+    <span style="color:var(--g3)">Liquidations</span>
+    <span style="color:${s.liquidations>0?'#ff6060':'var(--wb)'};font-weight:600">${s.liquidations}</span>
+  </div>
+</div>`;
+    })
+    .catch(()=>{
+      const box=$('mk-stats');
+      if(box)box.innerHTML=`
+<div style="border-bottom:1px solid var(--g4);padding:3px 8px;font-size:7.5px;letter-spacing:2px;text-transform:uppercase;color:var(--g2)">Trading Stats</div>
+<div style="padding:8px;font-size:9px;color:var(--g3);text-align:center">Could not load stats</div>`;
+    });
+}
+
+async function deleteMyMarker(id){
+  let secret=null;
+  try{secret=localStorage.getItem('mk_'+id)}catch(e){}
+  if(!secret){alert('You do not own this marker');return}
+  const btn=$('mk-del');
+  if(btn){btn.disabled=true;btn.textContent='Deleting...'}
+  try{
+    const r=await fetch('/api/markers/'+id,{method:'DELETE',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({secret})});
+    const d=await r.json();
+    if(!r.ok){alert(d.error||'Delete failed');if(btn){btn.disabled=false;btn.textContent='Delete My Marker'}return}
+    // Remove from local state
+    markers=markers.filter(m=>m.id!==id);
+    try{localStorage.removeItem('mk_'+id)}catch(e){}
+    closeMarker();
+  }catch(e){alert('Network error');if(btn){btn.disabled=false;btn.textContent='Delete My Marker'}}
+}
+
+function closeMarker(){$('marker-bg').classList.remove('open')}
+
+/* ═══════════════════════════════════════════════════
+   BACKEND FETCHES
+   ═══════════════════════════════════════════════════ */
+async function fetchBulk(){
+  try{
+    const r=await fetch('/api/bulk');if(!r.ok)throw new Error('HTTP '+r.status);
+    bulkData=await r.json();
+    const wsOk=bulkData.wsStatus==='connected',httpOk=bulkData.httpStatus==='live';
+    $('badge').textContent=wsOk?'LIVE':httpOk?'HTTP':(bulkData.wsStatus||'...');
+    $('badge').style.color=wsOk?'var(--grn)':httpOk?'var(--wb)':'var(--g2)';
+    $('ws-st').textContent=bulkData.wsStatus||'—';
+    $('http-st').textContent=bulkData.httpStatus||'—';
+  }catch(e){$('badge').textContent='ERR'}
+  updatePanels();
+}
+
+function updatePanels(){
+  const u=bulkData.uniqueTraders||0;
+  $('uc').textContent=fmt(u);
+  $('trades-n').textContent=fmt(bulkData.tradesTotal||0);
+  $('trades-s').textContent=fmt(bulkData.tradesSession||0);
+  $('uc-src').textContent=u>0?u+' unique addresses observed':'collecting from live trades...';
+  const ctx=bulkData.frontendCtx||[];
+  const btcCtx=ctx.find(c=>c.symbol==='BTC-USD');
+  if(btcCtx)$('btc-px').textContent='$'+fmtC(btcCtx.lastPrice);
+  else if(bulkData.btcPrice!=null)$('btc-px').textContent='$'+fmtC(bulkData.btcPrice);
+  if(bulkData.volume24h!=null)$('vol').textContent='$'+fmtC(bulkData.volume24h);
+  if(bulkData.openInterest!=null)$('oi').textContent='$'+fmtC(bulkData.openInterest);
+  if(bulkData.btcFunding!=null)$('btc-fr').textContent=(bulkData.btcFunding*100).toFixed(4)+'%';
+  let exc=0,tot=0;
+  for(const iso in countryMap){const p=countryMap[iso].pop;if(p>0){tot++;if(u>p)exc++}}
+  $('exc').textContent=exc;$('nexc').textContent=tot-exc;$('tot').textContent=tot;
+}
+
+/* ═══════════════════════════════════════════════════
+   CANVAS & GLOBE
+   ═══════════════════════════════════════════════════ */
+function initCanvas(){
+  const cv=$('cv');const dpr=Math.min(devicePixelRatio||1,2);
+  W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;cv.style.width=W+'px';cv.style.height=H+'px';
+  ctx=cv.getContext('2d');ctx.scale(dpr,dpr);R=Math.min(W,H)*.37;
+  projection=d3.geoOrthographic().scale(R).translate([W/2,H/2]).clipAngle(90).precision(0.5);
+  pathGen=d3.geoPath().projection(projection).context(ctx);
+}
+
+function drawGlobe(){
+  ctx.clearRect(0,0,W,H);
+  projection.scale(R*sc).rotate(rot);
+  const u=bulkData.uniqueTraders||0;
+  frameCount++;
+
+  // Glow
+  const cx=W/2,cy=H/2,rs=R*sc;
+  const grd=ctx.createRadialGradient(cx,cy,rs*.9,cx,cy,rs*1.2);
+  grd.addColorStop(0,'rgba(255,255,255,0.02)');grd.addColorStop(1,'transparent');
+  ctx.fillStyle=grd;ctx.fillRect(0,0,W,H);
+
+  // Ocean
+  ctx.beginPath();pathGen({type:'Sphere'});ctx.fillStyle='#141310';ctx.fill();
+
+  // Graticule
+  const grat=d3.geoGraticule().step([20,20])();
+  ctx.beginPath();pathGen(grat);ctx.strokeStyle='rgba(255,255,255,0.03)';ctx.lineWidth=0.4;ctx.stroke();
+
+  if(!geoData||!geoData.features)return;
+
+  // Countries
+  for(const f of geoData.features){
+    const iso=String(f.id),cd=countryMap[iso],pop=cd?cd.pop:0;
+    const exceeded=pop>0&&u>pop,hov=iso===hovISO;
+    ctx.beginPath();pathGen(f);
+    ctx.fillStyle=exceeded?(hov?'#ffffff':'#c0c0c0'):(hov?'#3b3829':'#1b1a14');
+    ctx.fill();
+  }
+  if(borderMesh){ctx.beginPath();pathGen(borderMesh);ctx.strokeStyle='rgba(255,255,255,0.2)';ctx.lineWidth=0.6;ctx.stroke()}
+  for(const f of geoData.features){
+    const iso=String(f.id),cd=countryMap[iso],pop=cd?cd.pop:0;
+    const exceeded=pop>0&&u>pop,hov=iso===hovISO;
+    if(hov){ctx.beginPath();pathGen(f);ctx.strokeStyle=exceeded?'#fff':'rgba(255,255,255,0.5)';ctx.lineWidth=1.8;ctx.stroke()}
+    else if(exceeded){ctx.beginPath();pathGen(f);ctx.strokeStyle='rgba(255,255,255,0.45)';ctx.lineWidth=0.8;ctx.stroke()}
+  }
+  ctx.beginPath();pathGen({type:'Sphere'});ctx.strokeStyle='rgba(255,255,255,0.12)';ctx.lineWidth=1.2;ctx.stroke();
+
+  // ── Draw markers ──
+  if(markersVisible) drawMarkers();
+}
+
+function drawMarkers(){
+  const pulse=Math.sin(frameCount*0.08)*0.5+0.5; // 0..1 pulse
+  // The center of the visible hemisphere after rotation
+  const centerLon=-rot[0], centerLat=-rot[1];
+
+  for(const m of markers){
+    // Check if on visible side BEFORE projecting
+    const d=d3.geoDistance([m.lon,m.lat],[centerLon,centerLat]);
+    if(d>=Math.PI/2) continue; // behind globe — skip entirely
+
+    const p=projection([m.lon,m.lat]);
+    if(!p) continue;
+
+    const isHov=(hovMarker&&hovMarker.id===m.id);
+    const sz=isHov?4:2.5; // small squares
+    const alpha=0.5+pulse*0.5;
+
+    // Outer glow (subtle)
+    ctx.fillStyle=`rgba(0, 180, 129,${alpha*0.12})`;
+    ctx.fillRect(p[0]-sz-2, p[1]-sz-2, (sz+2)*2, (sz+2)*2);
+
+    // Inner square
+    ctx.fillStyle=`rgba(0, 180, 129,${alpha})`;
+    ctx.fillRect(p[0]-sz, p[1]-sz, sz*2, sz*2);
+
+    // Border
+    ctx.strokeStyle=`rgba(255,255,255,${alpha*0.5})`;
+    ctx.lineWidth=isHov?1.2:0.5;
+    ctx.strokeRect(p[0]-sz, p[1]-sz, sz*2, sz*2);
+
+    // Label for hovered
+    if(isHov){
+      ctx.font='600 8px JetBrains Mono';
+      ctx.fillStyle='rgba(0, 180, 129,0.9)';
+      ctx.fillText(m.username,p[0]+sz+5,p[1]+3);
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   INTERACTION
+   ═══════════════════════════════════════════════════ */
+function setupEvents(){
+  const cv=$('cv');const sens=0.35;
+  let dragMoved=false,lastScrollTime=0;
+
+  cv.addEventListener('pointerdown',e=>{
+    dragging=true;dragMoved=false;vel=[0,0];
+    dragS=[e.clientX,e.clientY];dragR=[...rot];
+    cv.setPointerCapture(e.pointerId);
+  });
+  addEventListener('pointermove',e=>{
+    doTooltip(e);
+    if(!dragging)return;
+    const dx=e.clientX-dragS[0],dy=e.clientY-dragS[1];
+    if(Math.abs(dx)>3||Math.abs(dy)>3)dragMoved=true;
+    rot[0]=dragR[0]+dx*sens;rot[1]=Math.max(-90,Math.min(90,dragR[1]-dy*sens));
+  });
+  addEventListener('pointerup',e=>{
+    if(dragging&&dragS)vel=[(e.clientX-dragS[0])*.008,-(e.clientY-dragS[1])*.004];
+    dragging=false;
+  });
+  cv.addEventListener('wheel',e=>{
+    e.preventDefault();scT*=e.deltaY>0?.94:1.06;scT=Math.max(.4,Math.min(5,scT));
+    lastScrollTime=Date.now();
+  },{passive:false});
+
+  cv.addEventListener('click',e=>{
+    if(dragMoved)return;
+    if(Date.now()-lastScrollTime<400)return;
+    if(!isInsideGlobe(e.clientX,e.clientY))return;
+
+    // Place mode — put marker
+    if(placeMode){
+      const c=projection.invert([e.clientX,e.clientY]);
+      if(c&&!isNaN(c[0])){
+        openForm(c[1],c[0]); // lat, lon
+      }
+      return;
+    }
+
+    // Check if clicking a marker
+    const mk=markersVisible?markerAt(e.clientX,e.clientY):null;
+    if(mk){showMarkerDetail(mk);return}
+
+    // Country detail
+    const iso=isoAt(e.clientX,e.clientY);
+    if(iso)showModal(iso);
+  });
+
+  addEventListener('resize',initCanvas);
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){closeM();closeForm();closeMarker();if(placeMode)togglePlaceMode()}
+  });
+}
+
+function isInsideGlobe(px,py){
+  const cx=W/2,cy=H/2,gr=R*sc,dx=px-cx,dy=py-cy;
+  return(dx*dx+dy*dy)<=gr*gr;
+}
+function isoAt(px,py){
+  if(!geoData||!isInsideGlobe(px,py))return null;
+  const c=projection.invert([px,py]);
+  if(!c||isNaN(c[0])||isNaN(c[1]))return null;
+  for(const f of geoData.features){if(d3.geoContains(f,c))return String(f.id)}
+  return null;
+}
+function markerAt(px,py){
+  const centerLon=-rot[0], centerLat=-rot[1];
+  for(const m of markers){
+    const d=d3.geoDistance([m.lon,m.lat],[centerLon,centerLat]);
+    if(d>=Math.PI/2)continue;
+    const p=projection([m.lon,m.lat]);if(!p)continue;
+    const dx=px-p[0],dy=py-p[1];
+    if(dx*dx+dy*dy<100)return m; // 10px radius hit area
+  }
+  return null;
+}
+
+function doTooltip(e){
+  const tt=$('tt');
+  const inside=isInsideGlobe(e.clientX,e.clientY);
+  const c=inside?projection.invert([e.clientX,e.clientY]):null;
+  if(c&&!isNaN(c[0])){
+    $('crd').textContent=Math.abs(c[1]).toFixed(1)+'°'+(c[1]>=0?'N':'S')+' '+Math.abs(c[0]).toFixed(1)+'°'+(c[0]>=0?'E':'W');
+  }else{$('crd').textContent='—'}
+
+  // Check marker hover first
+  const mk=(inside&&markersVisible)?markerAt(e.clientX,e.clientY):null;
+  hovMarker=mk;
+
+  if(mk){
+    const wShort=mk.wallet.length>20?mk.wallet.slice(0,6)+'...'+mk.wallet.slice(-4):mk.wallet;
+    tt.innerHTML=`<div class="tn">${mk.username}</div><div class="tm">${wShort}</div><div class="td">Click to view profile</div>`;
+    tt.style.left=Math.min(e.clientX+14,W-200)+'px';tt.style.top=(e.clientY-10)+'px';
+    tt.classList.add('on');$('cv').style.cursor='pointer';
+    hovISO=null;return;
+  }
+
+  if(placeMode&&inside){
+    tt.classList.remove('on');$('cv').style.cursor='crosshair';hovISO=null;return;
+  }
+
+  const iso=inside?isoAt(e.clientX,e.clientY):null;
+  hovISO=iso;
+  const cd=iso?countryMap[iso]:null;
+  const feat=iso?geoData.features.find(f=>String(f.id)===iso):null;
+  const topoName=feat?.properties?.name;
+
+  if(cd||topoName){
+    const name=cd?cd.name:topoName;const pop=cd?cd.pop:null;
+    const u=bulkData.uniqueTraders||0;const exceeded=pop&&pop>0&&u>pop;
+    let h='<div class="tn">'+name+'</div>';
+    if(pop!=null){h+='<div class="td">Population: '+fmt(pop)+(cd?' · '+cd.region:'')+'</div>';if(exceeded)h+='<div class="tg">EXCEEDED by '+fmt(u-pop)+'</div>'}
+    else h+='<div class="td">No population data</div>';
+    const pct=pop?Math.min(100,(pop/1.5e9)*100):0;
+    h+='<div class="tbar"><div class="tfill" style="width:'+pct+'%"></div></div>';
+    tt.innerHTML=h;tt.style.left=Math.min(e.clientX+14,W-260)+'px';tt.style.top=(e.clientY-10)+'px';
+    tt.classList.add('on');$('cv').style.cursor='pointer';
+  }else{tt.classList.remove('on');if(!dragging&&!placeMode)$('cv').style.cursor='grab'}
+}
+
+/* ═══════════════════════════════════════════════════
+   COUNTRY MODAL
+   ═══════════════════════════════════════════════════ */
+async function showModal(iso){
+  const mb=$('mb');mb.innerHTML='<div class="mld">Loading...</div>';$('mbg').classList.add('open');
+  try{
+    const r=await fetch('/api/country/'+iso);if(!r.ok)throw new Error('Not found');const d=await r.json();
+    const name=d.name.toUpperCase(),popS=fmt(d.population),bulkS=fmt(d.bulkUsers);
+    const pctOfPop=d.population>0?((d.bulkUsers/d.population)*100).toFixed(4):'—';
+    const pctOfPopS=pctOfPop!=='—'?pctOfPop+'%':'—';
+    const excS=d.exceeded?'+'+fmt(d.excess):'—';
+    const excPctS=d.exceeded?d.excessPercent.toFixed(2)+'%':'—';
+    const ratio=d.population>0?(d.bulkUsers/d.population):0;
+    const barW=d.population>0?Math.min(100,(d.bulkUsers/d.population)*100):0;
+    const CW=22,vals=[popS,bulkS,pctOfPopS,excS,excPctS,name,d.region.toUpperCase()];
+    const VW=Math.max(...vals.map(v=>v.length))+2;
+    const pad=(s,n)=>s+' '.repeat(Math.max(0,n-s.length)),rp=c=>' '.repeat(Math.max(0,VW-c.length));
+    const ln=(l,v,cls='vc')=>`<span class="bc">│</span> <span class="lc">${pad(l,CW-2)}</span> <span class="bc">│</span> <span class="${cls}">${v}${rp(v)}</span> <span class="bc">│</span>`;
+    const hr=`<span class="bc">├${'─'.repeat(CW)}┼${'─'.repeat(VW+2)}┤</span>`;
+    const tp=`<span class="bc">┌${'─'.repeat(CW)}┬${'─'.repeat(VW+2)}┐</span>`;
+    const bt=`<span class="bc">└${'─'.repeat(CW)}┴${'─'.repeat(VW+2)}┘</span>`;
+
+    // Find markers inside this country
+    const feat=geoData?geoData.features.find(f=>String(f.id)===iso.replace(/^0+/,'')||String(f.id)===iso):null;
+    const countryMarkers=[];
+    if(feat){
+      for(const m of markers){
+        if(d3.geoContains(feat,[m.lon,m.lat])) countryMarkers.push(m);
+      }
+    }
+
+    let tradersHtml='';
+    if(countryMarkers.length>0){
+      let items='';
+      for(const m of countryMarkers){
+        const ws=m.wallet.length>16?m.wallet.slice(0,6)+'…'+m.wallet.slice(-4):m.wallet;
+        items+=`<div class="trader-item" onclick="closeM();showMarkerDetail(markers.find(x=>x.id==='${m.id}'))">
+  <span class="t-name">${m.username}</span><span class="t-wallet">${ws}</span>
+</div>`;
+      }
+      tradersHtml=`
+<div class="traders-section">
+  <div class="traders-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+    <span>Traders in ${d.name} (${countryMarkers.length})</span><span class="arrow">▸</span>
+  </div>
+  <div class="traders-list">${items}</div>
+</div>`;
+    }
+
+    mb.innerHTML=`<div class="mtb">
+${tp}
+${ln('COUNTRY',name)}
+${hr}
+${ln('REGION',d.region.toUpperCase())}
+${hr}
+${ln('POPULATION',popS)}
+${hr}
+${ln('BULK TRADERS',bulkS)}
+${hr}
+${ln('% OF POPULATION',pctOfPopS,d.exceeded?'hc':'vc')}
+${hr}
+${ln('EXCEEDED',d.exceeded?'YES':'NO',d.exceeded?'hc':'vc')}
+${d.exceeded?hr+'\n'+ln('EXCESS',excS,'hc')+'\n'+hr+'\n'+ln('EXCESS %',excPctS,'hc'):''}
+${bt}
+</div>
+${d.population>0?`<div class="rbw"><div style="font-size:7.5px;color:var(--g3);margin-bottom:3px;letter-spacing:1px">BULK TRADERS / POPULATION</div><div class="rb"><div class="rf" style="width:${barW}%"></div></div><div class="rl">${pctOfPopS}${ratio>=1?' ('+ratio.toFixed(2)+'x)':''}</div></div>`:''}
+${tradersHtml}`;
+  }catch(e){mb.innerHTML='<div class="mld">Country not found (ISO: '+iso+')</div>'}
+}
+function closeM(){$('mbg').classList.remove('open')}
+
+/* ═══════════════════════════════════════════════════
+   ANIMATION
+   ═══════════════════════════════════════════════════ */
+function animate(){
+  requestAnimationFrame(animate);
+  if(!dragging){
+    rot[0]+=vel[0];rot[1]=Math.max(-90,Math.min(90,rot[1]+vel[1]));
+    vel[0]*=.97;vel[1]*=.97;
+    if(Math.abs(vel[0])<.04)vel[0]=.06;if(Math.abs(vel[1])<.01)vel[1]=0;
+  }
+  sc+=(scT-sc)*.1;
+  $('ri').textContent='λ:'+rot[0].toFixed(1)+' φ:'+rot[1].toFixed(1)+' z:'+sc.toFixed(2)+'x';
+  drawGlobe();
+}
+
+init();
+</script>
+</body>
+</html>

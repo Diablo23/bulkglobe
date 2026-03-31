@@ -1,0 +1,28 @@
+[
+  {
+    "id": "88eccee9401c",
+    "lat": 34.93361207229492,
+    "lon": -101.24691717988374,
+    "wallet": "43FCw6GBmngMxPXSGXiAr1pQFyZ2D1BsAjYuim6W4pfE",
+    "username": "qurool",
+    "created": 1774733002.596333
+  },
+  {
+    "id": "922f17bea869",
+    "lat": 45.25924555183336,
+    "lon": 34.15073969438513,
+    "wallet": "8cbNvb2Drc2m9CgosPKP8pWNWkbwbWCCQrqZ4h9MoFFN",
+    "username": "momotavrrr",
+    "created": 1774736371.698185,
+    "secret": "e5d206f47f47ae33a726bac6c42bdff8"
+  },
+  {
+    "id": "a2f05f7c2ee9",
+    "lat": 54.97491721793235,
+    "lon": 41.92495540613218,
+    "wallet": "2jvsMbHDwC4iw4SVJoATYSJLyRqokwEiZfnixN365sHw",
+    "username": "test",
+    "created": 1774823837.59243,
+    "secret": "1fe6f7bda29057b65a5531eb3d2b56ed"
+  }
+]
