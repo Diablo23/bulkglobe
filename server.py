@@ -1,29 +1,20 @@
 #!/usr/bin/env python3
 """
-BULK Globe — Backend Server
-============================
-Counts unique traders who have EVER opened a position on BULK Exchange
-by collecting maker/taker pubkeys from the live WebSocket trades stream.
-
-The set of unique pubkeys is persisted to disk (traders.json) so the
-count survives server restarts and only ever grows.
+BULK Globe — Backend Server (PostgreSQL Edition)
+==================================================
+Stores markers and traders in PostgreSQL so data survives Railway deploys.
+Falls back to JSON files if DATABASE_URL is not set (local dev).
 
 BULK API integration:
   WebSocket wss://exchange-ws1.bulk.trade
-    → trades (BTC-USD, ETH-USD, SOL-USD) → unique pubkeys
+    → trades → unique pubkeys
     → frontendContext → all-market summary every 2s
   HTTP https://exchange-api.bulk.trade/api/v1
-    → GET /stats        → volume, OI, funding
-    → GET /ticker/*     → per-market price data
-    → GET /exchangeInfo → available markets
-
-Run:
-    pip install flask requests websocket-client
-    python3 server.py
-    open http://localhost:8080
+    → GET /stats, /ticker/*, /exchangeInfo
 """
 
 import json
+import os
 import time
 import threading
 from pathlib import Path
@@ -32,48 +23,217 @@ from flask import Flask, jsonify, send_from_directory
 app = Flask(__name__, static_folder='static')
 BASE = Path(__file__).parent
 DATA = BASE / 'data'
-TRADERS_FILE = BASE / 'traders.json'
+
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # ─────────────────────────────────────────────────────────
-# PERSISTENT UNIQUE TRADERS SET
+# DATABASE LAYER — PostgreSQL or JSON fallback
 # ─────────────────────────────────────────────────────────
-def load_traders():
-    """Load previously seen trader pubkeys from disk."""
-    if TRADERS_FILE.exists():
+db_lock = threading.Lock()
+
+def get_db():
+    """Get a PostgreSQL connection."""
+    import psycopg2
+    conn = psycopg2.connect(DATABASE_URL)
+    return conn
+
+def init_db():
+    """Create tables if they don't exist."""
+    if not DATABASE_URL:
+        print("[DB] No DATABASE_URL — using JSON files (local dev mode)")
+        return
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS traders (
+                pubkey TEXT PRIMARY KEY
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS markers (
+                id TEXT PRIMARY KEY,
+                lat DOUBLE PRECISION NOT NULL,
+                lon DOUBLE PRECISION NOT NULL,
+                wallet TEXT NOT NULL UNIQUE,
+                username TEXT NOT NULL,
+                created DOUBLE PRECISION NOT NULL,
+                secret TEXT NOT NULL
+            )
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("[DB] PostgreSQL tables ready")
+    except Exception as e:
+        print(f"[DB] Init error: {e}")
+
+
+# ── TRADERS ──
+
+def load_traders_db():
+    """Load all trader pubkeys from PostgreSQL."""
+    if not DATABASE_URL:
+        return load_traders_json()
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT pubkey FROM traders")
+        pubkeys = {row[0] for row in cur.fetchall()}
+        cur.close()
+        conn.close()
+        print(f"[DB] Loaded {len(pubkeys)} traders from PostgreSQL")
+        return pubkeys
+    except Exception as e:
+        print(f"[DB] load_traders error: {e}")
+        return load_traders_json()
+
+def save_new_traders_db(new_pubkeys):
+    """Insert new trader pubkeys into PostgreSQL."""
+    if not DATABASE_URL or not new_pubkeys:
+        return
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        for pk in new_pubkeys:
+            cur.execute("INSERT INTO traders (pubkey) VALUES (%s) ON CONFLICT DO NOTHING", (pk,))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"[DB] save_traders error: {e}")
+
+def load_traders_json():
+    """Fallback: load from JSON file."""
+    f = BASE / 'traders.json'
+    if f.exists():
         try:
-            data = json.loads(TRADERS_FILE.read_text())
+            data = json.loads(f.read_text())
             pubkeys = set(data.get("pubkeys", []))
-            print(f"[DISK] Loaded {len(pubkeys)} known traders from {TRADERS_FILE.name}")
+            print(f"[JSON] Loaded {len(pubkeys)} traders from traders.json")
             return pubkeys
-        except Exception as e:
-            print(f"[DISK] Error loading traders: {e}")
+        except Exception:
+            pass
     return set()
 
-
-def save_traders():
-    """Save unique trader pubkeys to disk."""
+def save_traders_json():
+    """Fallback: save to JSON file."""
     try:
-        data = {
+        f = BASE / 'traders.json'
+        f.write_text(json.dumps({
             "pubkeys": list(bulk["unique_traders"]),
             "count": len(bulk["unique_traders"]),
             "trades_total": bulk["trades_total"],
             "last_saved": time.time()
-        }
-        TRADERS_FILE.write_text(json.dumps(data))
+        }))
+    except Exception:
+        pass
+
+
+# ── MARKERS ──
+
+def load_markers():
+    """Load markers from PostgreSQL or JSON."""
+    if DATABASE_URL:
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("SELECT id, lat, lon, wallet, username, created, secret FROM markers ORDER BY created")
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+            return [{"id":r[0],"lat":r[1],"lon":r[2],"wallet":r[3],"username":r[4],"created":r[5],"secret":r[6]} for r in rows]
+        except Exception as e:
+            print(f"[DB] load_markers error: {e}")
+    # Fallback
+    f = BASE / 'markers.json'
+    if f.exists():
+        try:
+            return json.loads(f.read_text())
+        except Exception:
+            pass
+    return []
+
+def save_marker_db(marker):
+    """Insert a single marker into PostgreSQL."""
+    if not DATABASE_URL:
+        # JSON fallback
+        markers = load_markers()
+        markers.append(marker)
+        (BASE / 'markers.json').write_text(json.dumps(markers, indent=2))
+        return
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO markers (id, lat, lon, wallet, username, created, secret) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+            (marker["id"], marker["lat"], marker["lon"], marker["wallet"], marker["username"], marker["created"], marker["secret"])
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
     except Exception as e:
-        print(f"[DISK] Error saving traders: {e}")
+        print(f"[DB] save_marker error: {e}")
 
+def delete_marker_db(marker_id):
+    """Delete a marker from PostgreSQL."""
+    if not DATABASE_URL:
+        markers = load_markers()
+        markers = [m for m in markers if m.get("id") != marker_id]
+        (BASE / 'markers.json').write_text(json.dumps(markers, indent=2))
+        return
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM markers WHERE id = %s", (marker_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"[DB] delete_marker error: {e}")
 
-def save_traders_periodic():
-    """Save to disk every 60 seconds."""
-    while True:
-        time.sleep(60)
-        if bulk["unique_traders"]:
-            save_traders()
+def get_marker_by_id(marker_id):
+    """Get a single marker by ID (includes secret)."""
+    if DATABASE_URL:
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("SELECT id, lat, lon, wallet, username, created, secret FROM markers WHERE id = %s", (marker_id,))
+            r = cur.fetchone()
+            cur.close()
+            conn.close()
+            if r:
+                return {"id":r[0],"lat":r[1],"lon":r[2],"wallet":r[3],"username":r[4],"created":r[5],"secret":r[6]}
+        except Exception as e:
+            print(f"[DB] get_marker error: {e}")
+        return None
+    # JSON fallback
+    for m in load_markers():
+        if m.get("id") == marker_id:
+            return m
+    return None
+
+def wallet_exists(wallet):
+    """Check if wallet already has a marker."""
+    if DATABASE_URL:
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("SELECT 1 FROM markers WHERE wallet = %s", (wallet,))
+            exists = cur.fetchone() is not None
+            cur.close()
+            conn.close()
+            return exists
+        except Exception:
+            pass
+    for m in load_markers():
+        if m.get("wallet") == wallet:
+            return True
+    return False
 
 
 # ─────────────────────────────────────────────────────────
-# POPULATION DATA — UN World Population Prospects 2024
+# POPULATION DATA
 # ─────────────────────────────────────────────────────────
 COUNTRIES = {
     "004": {"name": "Afghanistan", "pop": 42239854, "region": "Asia"},
@@ -263,24 +423,24 @@ COUNTRIES = {
 # ─────────────────────────────────────────────────────────
 # LIVE DATA CACHE
 # ─────────────────────────────────────────────────────────
+
+# Initialize DB first
+init_db()
+
 bulk = {
-    "unique_traders": load_traders(),  # persistent set of all-time pubkeys
-    "trades_total": 0,                 # total trades observed this session
-    "trades_session": 0,               # trades this session only
-    # frontendContext data (all markets, updated every 2s via WS)
+    "unique_traders": load_traders_db(),
+    "new_traders_buffer": set(),  # buffer for batch DB insert
+    "trades_total": 0,
+    "trades_session": 0,
     "frontend_ctx": [],
-    # HTTP /stats
     "volume_24h": None,
     "open_interest": None,
     "funding_rates": {},
     "markets": [],
-    # HTTP /ticker
     "btc_price": None,
     "btc_mark_price": None,
     "btc_funding": None,
-    # HTTP /exchangeInfo
     "exchange_markets": [],
-    # Status
     "ws_status": "disconnected",
     "http_status": "init",
     "last_ws_trade": None,
@@ -306,15 +466,11 @@ def ws_thread():
     def on_open(ws):
         print("[WS] Connected to BULK Exchange")
         bulk["ws_status"] = "connected"
-
-        # Get market symbols from exchangeInfo if available
         symbols = [m.get("symbol") for m in bulk["exchange_markets"]] if bulk["exchange_markets"] else []
         if not symbols:
             symbols = ["BTC-USD", "ETH-USD", "SOL-USD"]
-
         subs = [{"type": "trades", "symbol": s} for s in symbols]
-        subs.append({"type": "frontendContext"})  # all-market summary every 2s
-
+        subs.append({"type": "frontendContext"})
         ws.send(json.dumps({"method": "subscribe", "subscription": subs}))
         print(f"[WS] Subscribed: trades({', '.join(symbols)}) + frontendContext")
 
@@ -323,14 +479,10 @@ def ws_thread():
             data = json.loads(message)
         except json.JSONDecodeError:
             return
-
         msg_type = data.get("type")
-
         if msg_type == "subscriptionResponse":
             print(f"[WS] Confirmed: {data.get('topics', [])}")
             return
-
-        # TRADES → collect unique pubkeys
         if msg_type == "trades":
             trades = data.get("data", {}).get("trades", [])
             new_count = 0
@@ -339,17 +491,14 @@ def ws_thread():
                     pk = t.get(key)
                     if pk and pk not in bulk["unique_traders"]:
                         bulk["unique_traders"].add(pk)
+                        bulk["new_traders_buffer"].add(pk)
                         new_count += 1
                         bulk["last_new_trader"] = time.time()
                 bulk["trades_total"] += 1
                 bulk["trades_session"] += 1
-
             if new_count > 0:
                 print(f"[WS] +{new_count} new traders → total {len(bulk['unique_traders'])}")
-
             bulk["last_ws_trade"] = time.time()
-
-        # FRONTEND CONTEXT → all-market summary
         elif msg_type == "frontendContext":
             bulk["frontend_ctx"] = data.get("data", {}).get("ctx", [])
 
@@ -365,22 +514,32 @@ def ws_thread():
     while True:
         try:
             bulk["ws_status"] = "connecting"
-            ws = websocket.WebSocketApp(
-                BULK_WS,
-                on_open=on_open,
-                on_message=on_message,
-                on_error=on_error,
-                on_close=on_close,
-            )
+            ws = websocket.WebSocketApp(BULK_WS, on_open=on_open, on_message=on_message, on_error=on_error, on_close=on_close)
             ws.run_forever(ping_interval=25, ping_timeout=10)
         except Exception as e:
             print(f"[WS] Exception: {e}")
-
         bulk["ws_status"] = "reconnecting"
-        save_traders()  # save on disconnect
+        flush_traders()
         print(f"[WS] Reconnecting in {delay}s...")
         time.sleep(delay)
         delay = min(delay * 2, 60)
+
+
+def flush_traders():
+    """Flush new traders buffer to DB."""
+    buf = bulk["new_traders_buffer"].copy()
+    if buf:
+        bulk["new_traders_buffer"] = set()
+        save_new_traders_db(buf)
+        save_traders_json()  # also keep JSON as backup
+        print(f"[DB] Flushed {len(buf)} new traders to DB")
+
+
+def periodic_flush():
+    """Flush traders to DB every 60 seconds."""
+    while True:
+        time.sleep(60)
+        flush_traders()
 
 
 # ─────────────────────────────────────────────────────────
@@ -388,7 +547,6 @@ def ws_thread():
 # ─────────────────────────────────────────────────────────
 def http_thread():
     import requests
-
     try:
         r = requests.get(f"{BULK_HTTP}/exchangeInfo", timeout=10)
         if r.ok:
@@ -408,9 +566,8 @@ def http_thread():
                 bulk["funding_rates"] = d.get("funding", {}).get("rates", {})
                 bulk["markets"] = d.get("markets", [])
                 bulk["http_status"] = "live"
-        except Exception as e:
+        except Exception:
             bulk["http_status"] = "error"
-
         try:
             r = requests.get(f"{BULK_HTTP}/ticker/BTC-USD", timeout=10)
             if r.ok:
@@ -420,7 +577,6 @@ def http_thread():
                 bulk["btc_funding"] = t.get("fundingRate")
         except Exception:
             pass
-
         bulk["last_http_poll"] = time.time()
         time.sleep(30)
 
@@ -506,44 +662,24 @@ def comparison():
 
 
 # ─────────────────────────────────────────────────────────
-# TRADER MARKERS — users pin their location on the globe
-# Persisted to markers.json
+# MARKER ROUTES
 # ─────────────────────────────────────────────────────────
-MARKERS_FILE = BASE / 'markers.json'
-
-def load_markers():
-    if MARKERS_FILE.exists():
-        try:
-            return json.loads(MARKERS_FILE.read_text())
-        except Exception:
-            pass
-    return []
-
-def save_markers(markers):
-    try:
-        MARKERS_FILE.write_text(json.dumps(markers, indent=2))
-    except Exception as e:
-        print(f"[MARKERS] Save error: {e}")
-
 @app.route('/api/markers', methods=['GET'])
-def get_markers():
+def get_markers_route():
     ms = load_markers()
-    # Strip secret tokens — only the creator knows their secret
     safe = [{k: v for k, v in m.items() if k != 'secret'} for m in ms]
     return jsonify(safe)
 
 @app.route('/api/markers', methods=['POST'])
-def add_marker():
+def add_marker_route():
     from flask import request as req
     data = req.get_json()
     if not data:
         return jsonify({"error": "JSON body required"}), 400
-
     lat = data.get("lat")
     lon = data.get("lon")
     wallet = (data.get("wallet") or "").strip()
     username = (data.get("username") or "").strip()
-
     if lat is None or lon is None:
         return jsonify({"error": "lat and lon required"}), 400
     if not wallet:
@@ -552,18 +688,12 @@ def add_marker():
         return jsonify({"error": "username required"}), 400
     if len(wallet) > 100 or len(username) > 50:
         return jsonify({"error": "fields too long"}), 400
-
-    markers = load_markers()
-
-    # Prevent duplicate wallet
-    for m in markers:
-        if m.get("wallet") == wallet:
-            return jsonify({"error": "This wallet is already on the map"}), 409
+    if wallet_exists(wallet):
+        return jsonify({"error": "This wallet is already on the map"}), 409
 
     import hashlib, secrets
-    secret = secrets.token_hex(16)  # 32-char hex token
+    secret = secrets.token_hex(16)
     marker_id = hashlib.sha256(f"{wallet}{time.time()}".encode()).hexdigest()[:12]
-
     marker = {
         "id": marker_id,
         "lat": float(lat),
@@ -571,106 +701,63 @@ def add_marker():
         "wallet": wallet,
         "username": username,
         "created": time.time(),
-        "secret": secret,  # stored on server, sent only on creation
+        "secret": secret,
     }
-    markers.append(marker)
-    save_markers(markers)
+    save_marker_db(marker)
     print(f"[MARKER] +{username} ({wallet[:12]}...) at {lat:.1f},{lon:.1f}")
-    return jsonify(marker), 201  # includes secret in response
+    return jsonify(marker), 201
 
 @app.route('/api/markers/<marker_id>', methods=['DELETE'])
-def delete_marker(marker_id):
+def delete_marker_route(marker_id):
     from flask import request as req
     data = req.get_json() or {}
     token = data.get("secret", "")
-
-    markers = load_markers()
-    target = None
-    for m in markers:
-        if m.get("id") == marker_id:
-            target = m
-            break
-
+    target = get_marker_by_id(marker_id)
     if not target:
         return jsonify({"error": "Marker not found"}), 404
-
     if not token or token != target.get("secret"):
         return jsonify({"error": "Unauthorized — wrong or missing secret"}), 403
-
-    markers = [m for m in markers if m.get("id") != marker_id]
-    save_markers(markers)
+    delete_marker_db(marker_id)
     print(f"[MARKER] Deleted {target.get('username')} ({marker_id})")
     return jsonify({"ok": True})
 
 
 @app.route('/api/wallet-stats/<wallet>')
 def wallet_stats(wallet):
-    """Fetch trading stats for a wallet from BULK API.
-    Uses POST /account with types: fills, positions (unsigned, public)."""
     import requests as req
-
-    stats = {
-        "wallet": wallet,
-        "totalTrades": 0,
-        "totalVolume": 0,
-        "totalPnl": 0,
-        "liquidations": 0,
-        "status": "loading"
-    }
-
-    # Fetch fills (trade history)
+    stats = {"wallet": wallet, "totalTrades": 0, "totalVolume": 0, "totalPnl": 0, "liquidations": 0, "status": "loading"}
     try:
-        r = req.post(f"{BULK_HTTP}/account",
-            json={"type": "fills", "user": wallet},
-            headers={"Content-Type": "application/json"},
-            timeout=10)
+        r = req.post(f"{BULK_HTTP}/account", json={"type": "fills", "user": wallet},
+            headers={"Content-Type": "application/json"}, timeout=10)
         if r.ok:
             fills = r.json()
-            total_trades = 0
-            total_volume = 0
             for item in fills:
                 f = item.get("fills")
-                if not f:
-                    continue
-                total_trades += 1
-                price = f.get("price", 0)
-                amount = abs(f.get("amount", 0))
-                total_volume += price * amount
-            stats["totalTrades"] = total_trades
-            stats["totalVolume"] = round(total_volume, 2)
+                if not f: continue
+                stats["totalTrades"] += 1
+                stats["totalVolume"] += f.get("price", 0) * abs(f.get("amount", 0))
+            stats["totalVolume"] = round(stats["totalVolume"], 2)
     except Exception as e:
-        print(f"[STATS] fills error for {wallet[:12]}: {e}")
-
-    # Fetch closed positions (PnL + liquidations)
+        print(f"[STATS] fills error: {e}")
     try:
-        r = req.post(f"{BULK_HTTP}/account",
-            json={"type": "positions", "user": wallet},
-            headers={"Content-Type": "application/json"},
-            timeout=10)
+        r = req.post(f"{BULK_HTTP}/account", json={"type": "positions", "user": wallet},
+            headers={"Content-Type": "application/json"}, timeout=10)
         if r.ok:
-            positions = r.json()
-            total_pnl = 0
-            liquidations = 0
-            for item in positions:
+            for item in r.json():
                 p = item.get("positions")
-                if not p:
-                    continue
-                total_pnl += p.get("realizedPnl", 0)
-                total_pnl -= p.get("fees", 0)
-                total_pnl += p.get("funding", 0)
+                if not p: continue
+                stats["totalPnl"] += p.get("realizedPnl", 0) - p.get("fees", 0) + p.get("funding", 0)
                 if p.get("closeReason") == "liquidation":
-                    liquidations += 1
-            stats["totalPnl"] = round(total_pnl, 2)
-            stats["liquidations"] = liquidations
+                    stats["liquidations"] += 1
+            stats["totalPnl"] = round(stats["totalPnl"], 2)
     except Exception as e:
-        print(f"[STATS] positions error for {wallet[:12]}: {e}")
-
+        print(f"[STATS] positions error: {e}")
     stats["status"] = "ok"
     return jsonify(stats)
 
+
 # ─────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    import os
     PORT = int(os.environ.get('PORT', 8080))
     for f in ['countries-50m.json']:
         if not (DATA / f).exists():
@@ -678,17 +765,18 @@ if __name__ == '__main__':
 
     threading.Thread(target=ws_thread, daemon=True).start()
     threading.Thread(target=http_thread, daemon=True).start()
-    threading.Thread(target=save_traders_periodic, daemon=True).start()
+    threading.Thread(target=periodic_flush, daemon=True).start()
 
     n = len(bulk["unique_traders"])
+    db_mode = "PostgreSQL" if DATABASE_URL else "JSON files (local)"
     print()
     print("  ╔════════════════════════════════════════════════╗")
     print("  ║            BULK GLOBE SERVER                   ║")
     print("  ║                                                ║")
     print(f"  ║   → http://localhost:{PORT}                      ║")
     print("  ║                                                ║")
-    print(f"  ║   Known traders from disk: {n:<20} ║")
-    print("  ║   Traders file: traders.json                   ║")
+    print(f"  ║   Storage: {db_mode:<35} ║")
+    print(f"  ║   Known traders: {n:<28} ║")
     print("  ║                                                ║")
     print("  ║   WS  trades + frontendContext                 ║")
     print("  ║   HTTP /stats /ticker /exchangeInfo            ║")
