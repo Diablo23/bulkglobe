@@ -687,7 +687,7 @@ def add_marker_route():
     if not username:
         return jsonify({"error": "username required"}), 400
     if len(wallet) < 32 or len(wallet) > 44 or len(username) > 50:
-    return jsonify({"error": "Wallet must be 32-44 characters, username max 50"}), 400
+        return jsonify({"error": "Wallet must be 32-44 characters, username max 50"}), 400
     if wallet_exists(wallet):
         return jsonify({"error": "This wallet is already on the map"}), 409
 
